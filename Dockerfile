@@ -1,62 +1,66 @@
-FROM php:7.3-alpine
+FROM php:7.3-fpm-alpine
+MAINTAINER yicru
 
-# Install dev dependencies
-RUN apk add --no-cache --virtual .build-deps \
-    $PHPIZE_DEPS \
-    curl-dev \
-    imagemagick-dev \
-    libtool \
-    libxml2-dev \
-    postgresql-dev \
-    sqlite-dev
-
-# Install production dependencies
+# install packages
 RUN apk add --no-cache \
     bash \
-    curl \
-    g++ \
-    gcc \
     git \
-    imagemagick \
-    libc-dev \
+    curl-dev \
+    libxml2-dev \
+    postgresql-dev \
     libpng-dev \
-    make \
-    mysql-client \
-    nodejs \
-    nodejs-npm \
-    yarn \
-    openssh-client \
-    postgresql-libs \
-    rsync \
-    zlib-dev \
-    libzip-dev
+    libjpeg-turbo-dev \
+    zip \
+    libzip-dev \
+    unzip \
+    gmp-dev
 
-# Install PECL and PEAR extensions
-RUN pecl install \
-    imagick \
-    xdebug
-
-# Install and enable php extensions
-RUN docker-php-ext-enable \
-    imagick \
-    xdebug
-RUN docker-php-ext-configure zip --with-libzip
-RUN docker-php-ext-install \
-    curl \
-    iconv \
-    mbstring \
-    pdo \
+# install PHP extensions
+RUN docker-php-source extract \
+    && cp /usr/src/php/ext/openssl/config0.m4 /usr/src/php/ext/openssl/config.m4 \
+    && docker-php-ext-configure gd --with-png-dir=/usr/include --with-jpeg-dir=/usr/include \
+    && docker-php-ext-install pdo \
     pdo_mysql \
+    mysqli \
     pdo_pgsql \
-    pdo_sqlite \
-    pcntl \
-    tokenizer \
+    pgsql \
+    mbstring \
+    curl \
+    ctype \
     xml \
+    json \
+    tokenizer \
+    openssl \
     gd \
     zip \
-    bcmath
+    gmp \
+    bcmath \
+    exif
 
-# Install supervisor nginx
+# install composer
+RUN curl -sS https://getcomposer.org/installer | php \
+    && mv composer.phar /usr/local/bin/composer \
+    && composer global require laravel/installer \
+    && composer global require hirak/prestissimo
+ENV PATH=~/.composer/vendor/bin:$PATH
+
+# install dockerize
+ENV DOCKERIZE_VERSION v0.6.1
+RUN wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-alpine-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
+    && tar -C /usr/local/bin -xzvf dockerize-alpine-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
+    && rm dockerize-alpine-linux-amd64-$DOCKERIZE_VERSION.tar.gz
+
+# add user
+RUN apk add sudo shadow \
+    && groupadd -g 1000 yicru \
+    && useradd -u 1000 -g 1000 yicru \
+    && sed -e 's/# %wheel ALL=(ALL) NOPASSWD: ALL/%wheel ALL=(ALL) NOPASSWD: ALL/g' \
+    -i /etc/sudoers \
+    && sed -e 's/^wheel:\(.*\)/wheel:\1,yicru/g' -i /etc/group \
+    && mkdir /home/yicru && chown 1000:1000 -R /home/yicru \
+    && mkdir /work && chown 1000:1000 -R /work
+
+# supervisor nginx
 RUN apk add --no-cache supervisor \
     && mkdir /run/supervisor \
     && apk add --no-cache nginx \
@@ -64,17 +68,11 @@ RUN apk add --no-cache supervisor \
     && chown -R 1000:1000 /run/nginx \
     && chown -R 1000:1000 /var/lib/nginx
 
-# Install composer
-ENV COMPOSER_HOME /composer
-ENV PATH ./vendor/bin:/composer/vendor/bin:$PATH
-ENV COMPOSER_ALLOW_SUPERUSER 1
-RUN curl -s https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin/ --filename=composer
+# basic auth
+RUN apk add --no-cache apache2-utils
 
-# Install PHP_CodeSniffer
-RUN composer global require "squizlabs/php_codesniffer=*"
+WORKDIR /work
+USER yicru
 
-# Cleanup dev dependencies
-RUN apk del -f .build-deps
-
-# Setup working directory
-WORKDIR /var/www
+ENTRYPOINT []
+CMD php-fpm
