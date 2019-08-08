@@ -56,6 +56,14 @@ RUN docker-php-ext-install \
     zip \
     bcmath
 
+# Install supervisor nginx
+RUN apk add --no-cache supervisor \
+    && mkdir /run/supervisor \
+    && apk add --no-cache nginx \
+    && mkdir /run/nginx \
+    && chown -R 1000:1000 /run/nginx \
+    && chown -R 1000:1000 /var/lib/nginx
+
 # Install composer
 ENV COMPOSER_HOME /composer
 ENV PATH ./vendor/bin:/composer/vendor/bin:$PATH
